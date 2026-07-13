@@ -31,7 +31,43 @@ function groupPdfItems(items, viewport) {
   }).join('\n');
 }
 
-async function renderPage(page, scale = 2.65) {
+const OCR_START_TIMEOUT = 120_000;
+const OCR_PAGE_TIMEOUT = 75_000;
+
+function makeAbortError() {
+  return new DOMException('扫描已取消', 'AbortError');
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw makeAbortError();
+}
+
+function guardTask(task, { signal, timeout, timeoutMessage, onStop }) {
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const finish = (callback, value) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      callback(value);
+    };
+    const stop = (error) => {
+      try { onStop?.(); } catch { /* worker cleanup is best effort */ }
+      finish(reject, error);
+    };
+    const abort = () => stop(makeAbortError());
+    const timer = setTimeout(() => stop(new Error(timeoutMessage)), timeout);
+    signal?.addEventListener('abort', abort, { once: true });
+    task.then((value) => finish(resolve, value), (error) => finish(reject, error));
+    if (signal?.aborted) abort();
+  });
+}
+
+async function renderPage(page) {
+  const original = page.getViewport({ scale: 1 });
+  // Around 1,250 px wide is enough for this textbook while avoiding multi-megapixel canvases.
+  const scale = Math.min(2.15, 1250 / original.width);
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(viewport.width);
@@ -43,47 +79,52 @@ async function renderPage(page, scale = 2.65) {
   return canvas;
 }
 
-function cropColumn(source, side) {
-  const canvas = document.createElement('canvas');
-  const marginX = Math.round(source.width * 0.06);
-  const top = Math.round(source.height * 0.065);
-  const bottom = Math.round(source.height * 0.04);
-  const gap = Math.round(source.width * 0.012);
-  const half = Math.round(source.width / 2);
-  const sx = side === 0 ? marginX : half + gap;
-  const width = side === 0 ? half - marginX - gap : source.width - sx - marginX;
-  const height = source.height - top - bottom;
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext('2d', { alpha: false }).drawImage(source, sx, top, width, height, 0, 0, width, height);
-  return canvas;
+function describeOcrStatus(message) {
+  if (message.status === 'loading tesseract core') return '正在加载 OCR 引擎';
+  if (message.status === 'loading language traineddata') return '正在加载中英文模型';
+  if (message.status === 'initializing tesseract' || message.status === 'initializing api') return '正在初始化识别器';
+  if (message.status === 'recognizing text') return '正在识别扫描页';
+  return '正在准备 OCR';
 }
 
-async function createOcrWorker(onProgress) {
-  const worker = await createWorker(['eng', 'chi_sim'], OEM.LSTM_ONLY, {
+async function createOcrWorker(onProgress, signal) {
+  let workerPromise;
+  workerPromise = createWorker(['eng', 'chi_sim'], OEM.LSTM_ONLY, {
     workerPath: assetUrl('ocr/worker.min.js'),
     corePath: assetUrl('ocr/core'),
     langPath: assetUrl('ocr/lang'),
-    logger: (message) => {
-      if (message.status === 'recognizing text') onProgress?.(message.progress || 0);
-    },
+    logger: (message) => onProgress?.({
+      phase: describeOcrStatus(message),
+      progress: message.progress || 0,
+    }),
+  });
+  const worker = await guardTask(workerPromise, {
+    signal,
+    timeout: OCR_START_TIMEOUT,
+    timeoutMessage: 'OCR 模型加载超时，请刷新页面并检查网络后重试。',
+    onStop: () => workerPromise.then((pendingWorker) => pendingWorker.terminate()).catch(() => {}),
   });
   await worker.setParameters({
-    tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+    // AUTO detects the two textbook columns in one pass and is much faster than two separate jobs.
+    tessedit_pageseg_mode: PSM.AUTO,
     preserve_interword_spaces: '1',
-    user_defined_dpi: '300',
+    user_defined_dpi: '180',
   });
   return worker;
 }
 
-export async function readPdf(file, onProgress) {
+export async function readPdf(file, onProgress, signal) {
+  throwIfAborted(signal);
   const data = await file.arrayBuffer();
+  throwIfAborted(signal);
   const pdf = await pdfjsLib.getDocument({ data }).promise;
   let worker = null;
+  let currentOcrPage = 1;
   const pages = [];
 
   try {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      throwIfAborted(signal);
       const page = await pdf.getPage(pageNumber);
       const viewport = page.getViewport({ scale: 1 });
       const content = await page.getTextContent();
@@ -91,14 +132,31 @@ export async function readPdf(file, onProgress) {
       const hasUsefulText = pageText.length > 80 && /[\u3400-\u9fff]/.test(pageText) && /[A-Za-z]/.test(pageText);
 
       if (!hasUsefulText) {
+        currentOcrPage = pageNumber;
         onProgress?.({ phase: '准备 OCR', page: pageNumber, total: pdf.numPages, progress: 0 });
-        if (!worker) worker = await createOcrWorker((progress) => {
-          onProgress?.({ phase: '正在识别扫描页', page: pageNumber, total: pdf.numPages, progress });
-        });
+        if (!worker) worker = await createOcrWorker((workerProgress) => {
+          // The worker logger lives for the whole document, so read a mutable page number.
+          onProgress?.({ ...workerProgress, page: currentOcrPage, total: pdf.numPages });
+        }, signal);
+        onProgress?.({ phase: '正在渲染扫描页', page: pageNumber, total: pdf.numPages, progress: 0 });
         const canvas = await renderPage(page);
-        const left = await worker.recognize(cropColumn(canvas, 0));
-        const right = await worker.recognize(cropColumn(canvas, 1));
-        pageText = `${left.data.text}\n${right.data.text}`;
+        throwIfAborted(signal);
+        const marginX = Math.round(canvas.width * 0.035);
+        const marginY = Math.round(canvas.height * 0.035);
+        const recognition = await guardTask(worker.recognize(canvas, {
+          rectangle: {
+            left: marginX,
+            top: marginY,
+            width: canvas.width - marginX * 2,
+            height: canvas.height - marginY * 2,
+          },
+        }), {
+          signal,
+          timeout: OCR_PAGE_TIMEOUT,
+          timeoutMessage: `第 ${pageNumber} 页识别超时，请降低文件分辨率后重试。`,
+          onStop: () => worker?.terminate(),
+        });
+        pageText = recognition.data.text;
         canvas.width = 1;
         canvas.height = 1;
       }
@@ -123,9 +181,9 @@ export async function readDocx(file) {
   return result.value;
 }
 
-export async function readVocabularyFile(file, onProgress) {
+export async function readVocabularyFile(file, onProgress, signal) {
   const name = file.name.toLowerCase();
-  if (name.endsWith('.pdf')) return readPdf(file, onProgress);
+  if (name.endsWith('.pdf')) return readPdf(file, onProgress, signal);
   if (name.endsWith('.docx') || name.endsWith('.doc')) return readDocx(file);
   throw new Error('请选择 PDF 或 Word（.docx）文件。');
 }
