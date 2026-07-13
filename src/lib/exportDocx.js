@@ -29,9 +29,9 @@ const COLORS = {
 };
 
 export const DENSITY = {
-  comfortable: { label: '舒展', font: 18, spacing: 150, rows: { 1: 24, 2: 22, 3: 20, 4: 17, 5: 14 } },
-  compact: { label: '紧凑', font: 16, spacing: 115, rows: { 1: 30, 2: 28, 3: 25, 4: 21, 5: 18 } },
-  maximum: { label: '极致', font: 14, spacing: 85, rows: { 1: 36, 2: 34, 3: 30, 4: 26, 5: 22 } },
+  comfortable: { label: '舒展', font: 18, spacing: 150, rows: { 1: 48, 2: 42, 3: 36, 4: 28, 5: 22 } },
+  compact: { label: '紧凑', font: 16, spacing: 115, rows: { 1: 60, 2: 52, 3: 44, 4: 34, 5: 27 } },
+  maximum: { label: '极致', font: 14, spacing: 85, rows: { 1: 72, 2: 62, 3: 52, 4: 40, 5: 32 } },
 };
 
 export function normalizeColumnCount(value) {
