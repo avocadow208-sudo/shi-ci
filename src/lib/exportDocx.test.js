@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { getBalancedPagePlan, normalizeColumnCount, QUESTION_LINE_SPACING, TARGET_ROWS_BY_COLUMNS } from './exportDocx';
+import {
+  getBalancedPagePlan,
+  getTableColumnWidths,
+  normalizeColumnCount,
+  QUESTION_LINE_SPACING,
+  TABLE_WIDTH,
+  TARGET_ROWS_BY_COLUMNS,
+} from './exportDocx';
 
 describe('portrait Word layout', () => {
   it('supports one to five columns', () => {
@@ -7,6 +14,15 @@ describe('portrait Word layout', () => {
     expect(normalizeColumnCount(5)).toBe(5);
     expect(normalizeColumnCount(0)).toBe(1);
     expect(normalizeColumnCount(8)).toBe(5);
+  });
+
+  it('uses the complete printable width for every supported table layout', () => {
+    for (let columns = 1; columns <= 5; columns += 1) {
+      const widths = getTableColumnWidths(columns);
+      expect(widths).toHaveLength(columns);
+      expect(widths.reduce((total, width) => total + width, 0)).toBe(TABLE_WIDTH);
+      expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+    }
   });
 
   it('uses relaxed line spacing inside multi-line questions', () => {

@@ -20,7 +20,9 @@ import { exerciseAnswer, exercisePrompt } from './vocab.js';
 
 const PAGE_WIDTH = 11906;
 const PAGE_HEIGHT = 16838;
+const PAGE_MARGIN = Object.freeze({ top: 260, right: 260, bottom: 300, left: 260, footer: 150 });
 const TABLE_HEIGHT = 14200;
+export const TABLE_WIDTH = PAGE_WIDTH - PAGE_MARGIN.left - PAGE_MARGIN.right;
 export const QUESTION_LINE_SPACING = 150;
 export const EXPORT_COLUMNS = 5;
 export const TARGET_ROWS_BY_COLUMNS = Object.freeze({ 1: 35, 2: 34, 3: 29, 4: 25, 5: 22 });
@@ -36,6 +38,16 @@ export function normalizeColumnCount(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return EXPORT_COLUMNS;
   return Math.min(EXPORT_COLUMNS, Math.max(1, Math.round(parsed)));
+}
+
+export function getTableColumnWidths(columnCount) {
+  const normalizedColumns = normalizeColumnCount(columnCount);
+  const baseWidth = Math.floor(TABLE_WIDTH / normalizedColumns);
+  const remainder = TABLE_WIDTH % normalizedColumns;
+  return Array.from(
+    { length: normalizedColumns },
+    (_, index) => baseWidth + (index < remainder ? 1 : 0),
+  );
 }
 
 export function getBalancedPagePlan(itemCount, columns = EXPORT_COLUMNS, targetRows) {
@@ -89,6 +101,7 @@ function promptFontSize(text, columnCount) {
 
 function makeGrid(items, rowCount, columnCount, answerMode = false, numberOffset = 0) {
   const rows = [];
+  const columnWidths = getTableColumnWidths(columnCount);
   const rowHeight = Math.min(720, Math.floor(TABLE_HEIGHT / rowCount));
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
     const cells = [];
@@ -98,7 +111,7 @@ function makeGrid(items, rowCount, columnCount, answerMode = false, numberOffset
       const text = item ? compactPrompt(item, answerMode) : '';
       const fontSize = promptFontSize(text, columnCount);
       cells.push(new TableCell({
-        width: { size: 100 / columnCount, type: WidthType.PERCENTAGE },
+        width: { size: columnWidths[col], type: WidthType.DXA },
         verticalAlign: VerticalAlign.CENTER,
         margins: { top: 35, bottom: 35, left: 55, right: 55 },
         shading: answerMode && rowIndex % 2 === 0 ? { fill: COLORS.wash, type: ShadingType.CLEAR } : undefined,
@@ -127,7 +140,8 @@ function makeGrid(items, rowCount, columnCount, answerMode = false, numberOffset
     }));
   }
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: TABLE_WIDTH, type: WidthType.DXA },
+    columnWidths,
     layout: TableLayoutType.FIXED,
     rows,
   });
@@ -168,7 +182,7 @@ export async function createExercisesDocxBlob(exercises, options) {
       properties: {
         page: {
           size: { width: PAGE_WIDTH, height: PAGE_HEIGHT, orientation: 'portrait' },
-          margin: { top: 260, right: 260, bottom: 300, left: 260, footer: 150 },
+          margin: PAGE_MARGIN,
         },
       },
       footers: {
