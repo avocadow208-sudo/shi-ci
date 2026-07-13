@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth/mammoth.browser';
 import { createWorker, OEM, PSM } from 'tesseract.js';
+import { cleanupPdfResources } from './resourceCleanup.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -117,7 +118,8 @@ export async function readPdf(file, onProgress, signal) {
   throwIfAborted(signal);
   const data = await file.arrayBuffer();
   throwIfAborted(signal);
-  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const loadingTask = pdfjsLib.getDocument({ data });
+  const pdf = await loadingTask.promise;
   let worker = null;
   let currentOcrPage = 1;
   const pages = [];
@@ -166,8 +168,7 @@ export async function readPdf(file, onProgress, signal) {
       page.cleanup();
     }
   } finally {
-    if (worker) await worker.terminate();
-    await pdf.destroy();
+    await cleanupPdfResources({ ocrWorker: worker, pdf, loadingTask });
   }
   return pages.join('\n');
 }
