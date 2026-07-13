@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { EXPORT_COLUMNS, getBalancedPagePlan } from './exportDocx';
+import { EXPORT_COLUMNS, getBalancedPagePlan, QUESTION_LINE_SPACING } from './exportDocx';
 
 describe('portrait Word layout', () => {
   it('always uses five columns', () => {
     expect(EXPORT_COLUMNS).toBe(5);
+  });
+
+  it('uses relaxed line spacing inside multi-line questions', () => {
+    expect(QUESTION_LINE_SPACING).toBe(150);
   });
 
   it('balances a large vocabulary across full pages', () => {
