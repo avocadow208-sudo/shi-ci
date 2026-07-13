@@ -18,8 +18,8 @@ import {
 } from 'docx';
 import { exerciseAnswer, exercisePrompt } from './vocab.js';
 
-const PAGE_WIDTH = 16838;
-const PAGE_HEIGHT = 11906;
+const PAGE_WIDTH = 11906;
+const PAGE_HEIGHT = 16838;
 const COLORS = {
   ink: '243235',
   muted: '667477',
@@ -29,10 +29,22 @@ const COLORS = {
 };
 
 export const DENSITY = {
-  comfortable: { label: '舒展', perPage: 60, font: 18, spacing: 150 },
-  compact: { label: '紧凑', perPage: 80, font: 16, spacing: 115 },
-  maximum: { label: '极致', perPage: 100, font: 14, spacing: 85 },
+  comfortable: { label: '舒展', font: 18, spacing: 150, rows: { 1: 24, 2: 22, 3: 20, 4: 17, 5: 14 } },
+  compact: { label: '紧凑', font: 16, spacing: 115, rows: { 1: 30, 2: 28, 3: 25, 4: 21, 5: 18 } },
+  maximum: { label: '极致', font: 14, spacing: 85, rows: { 1: 36, 2: 34, 3: 30, 4: 26, 5: 22 } },
 };
+
+export function normalizeColumnCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 3;
+  return Math.min(5, Math.max(1, Math.round(parsed)));
+}
+
+export function getExercisesPerPage(densityKey = 'compact', columnCount = 3) {
+  const density = DENSITY[densityKey] || DENSITY.compact;
+  const columns = normalizeColumnCount(columnCount);
+  return density.rows[columns] * columns;
+}
 
 function makeHeader(title, subtitle) {
   return [
@@ -51,17 +63,17 @@ function makeHeader(title, subtitle) {
   ];
 }
 
-function makeGrid(items, density, answerMode = false, numberOffset = 0) {
+function makeGrid(items, density, columnCount, answerMode = false, numberOffset = 0) {
   const rows = [];
-  const rowsPerPage = Math.ceil(items.length / 5);
+  const rowsPerPage = Math.ceil(items.length / columnCount);
   for (let rowIndex = 0; rowIndex < rowsPerPage; rowIndex += 1) {
     const cells = [];
-    for (let col = 0; col < 5; col += 1) {
-      const itemIndex = rowIndex * 5 + col;
+    for (let col = 0; col < columnCount; col += 1) {
+      const itemIndex = rowIndex * columnCount + col;
       const item = items[itemIndex];
       const text = item ? (answerMode ? exerciseAnswer(item) : exercisePrompt(item)) : '';
       cells.push(new TableCell({
-        width: { size: 20, type: WidthType.PERCENTAGE },
+        width: { size: 100 / columnCount, type: WidthType.PERCENTAGE },
         verticalAlign: VerticalAlign.TOP,
         margins: { top: 35, bottom: 35, left: 55, right: 55 },
         shading: answerMode && rowIndex % 2 === 0 ? { fill: COLORS.wash, type: ShadingType.CLEAR } : undefined,
@@ -69,7 +81,9 @@ function makeGrid(items, density, answerMode = false, numberOffset = 0) {
           top: { style: BorderStyle.NONE },
           bottom: { style: BorderStyle.SINGLE, color: COLORS.rule, size: 3 },
           left: { style: BorderStyle.NONE },
-          right: { style: BorderStyle.SINGLE, color: COLORS.rule, size: 3 },
+          right: col === columnCount - 1
+            ? { style: BorderStyle.NONE }
+            : { style: BorderStyle.SINGLE, color: COLORS.rule, size: 3 },
         },
         children: [new Paragraph({
           spacing: { line: density.spacing, after: 0 },
@@ -92,16 +106,18 @@ function makeGrid(items, density, answerMode = false, numberOffset = 0) {
 
 function makePages(exercises, options, answerMode = false) {
   const density = DENSITY[options.density] || DENSITY.compact;
+  const columnCount = normalizeColumnCount(options.columnCount);
+  const perPage = getExercisesPerPage(options.density, columnCount);
   const result = [];
-  for (let start = 0; start < exercises.length; start += density.perPage) {
+  for (let start = 0; start < exercises.length; start += perPage) {
     if (start > 0) result.push(new Paragraph({ children: [new PageBreak()] }));
-    const pageItems = exercises.slice(start, start + density.perPage);
-    const pageNumber = Math.floor(start / density.perPage) + 1;
+    const pageItems = exercises.slice(start, start + perPage);
+    const pageNumber = Math.floor(start / perPage) + 1;
     result.push(...makeHeader(
       answerMode ? `${options.title || '英语词汇挖空练习'} · 答案` : options.title,
-      `${answerMode ? '答案页' : '练习页'} ${pageNumber}　·　共 ${exercises.length} 题　·　五列排版`,
+      `${answerMode ? '答案页' : '练习页'} ${pageNumber}　·　共 ${exercises.length} 题　·　${columnCount} 列排版`,
     ));
-    result.push(makeGrid(pageItems, density, answerMode, start));
+    result.push(makeGrid(pageItems, density, columnCount, answerMode, start));
   }
   return result;
 }
@@ -111,6 +127,7 @@ function safeFilename(value) {
 }
 
 export async function createExercisesDocxBlob(exercises, options) {
+  const columnCount = normalizeColumnCount(options.columnCount);
   const children = makePages(exercises, options, false);
   if (options.includeAnswers && exercises.length) {
     children.push(new Paragraph({ children: [new PageBreak()] }));
@@ -120,11 +137,11 @@ export async function createExercisesDocxBlob(exercises, options) {
   const wordDocument = new Document({
     creator: '拾词 · 英语挖空练习生成器',
     title: options.title,
-    description: '五列 A4 英语词汇挖空练习',
+    description: `${columnCount} 列 A4 竖版英语词汇挖空练习`,
     sections: [{
       properties: {
         page: {
-          size: { width: PAGE_WIDTH, height: PAGE_HEIGHT, orientation: 'landscape' },
+          size: { width: PAGE_WIDTH, height: PAGE_HEIGHT, orientation: 'portrait' },
           margin: { top: 260, right: 260, bottom: 300, left: 260, footer: 150 },
         },
       },
