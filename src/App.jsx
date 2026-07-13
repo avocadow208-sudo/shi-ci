@@ -34,7 +34,7 @@ const EXAMPLE_ENTRIES = [
   { id: 'sample-10', english: 'focus on', chinese: '集中；特别关注' },
 ];
 
-function ProgressPanel({ progress }) {
+function ProgressPanel({ progress, onCancel }) {
   const percent = progress.total
     ? Math.round(((progress.page - 1 + (progress.progress || 0)) / progress.total) * 100)
     : 0;
@@ -47,13 +47,16 @@ function ProgressPanel({ progress }) {
           <strong>{percent}%</strong>
         </div>
         <div className="progress-track"><span style={{ width: `${percent}%` }} /></div>
-        <p>{progress.total ? `第 ${progress.page} / ${progress.total} 页` : '正在准备解析器…'} · 扫描 PDF 首次识别需要一些时间</p>
+        <div className="progress-foot">
+          <p>{progress.total ? `第 ${progress.page} / ${progress.total} 页` : '正在准备解析器…'} · 首次会加载中英文模型</p>
+          <button type="button" onClick={onCancel}>取消扫描</button>
+        </div>
       </div>
     </div>
   );
 }
 
-function UploadPanel({ onFile, busy, progress, error }) {
+function UploadPanel({ onFile, onCancel, busy, progress, error }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
 
@@ -90,7 +93,7 @@ function UploadPanel({ onFile, busy, progress, error }) {
         <span className="file-chips"><i>PDF</i><i>DOCX</i><i>最大 50 MB</i></span>
       </button>
 
-      {busy && <ProgressPanel progress={progress} />}
+      {busy && <ProgressPanel progress={progress} onCancel={onCancel} />}
       {error && <div className="error-banner"><X size={18} />{error}</div>}
 
       <div className="trust-row">
@@ -262,6 +265,7 @@ function PagePreview({ exercises, settings }) {
 }
 
 export default function App() {
+  const abortRef = useRef(null);
   const [entries, setEntries] = useState([]);
   const [filename, setFilename] = useState('');
   const [busy, setBusy] = useState(false);
@@ -282,12 +286,14 @@ export default function App() {
   );
 
   const handleFile = useCallback(async (file) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
     setBusy(true);
     setError('');
     setProgress({ phase: '正在读取文件', page: 0, total: 0, progress: 0 });
     try {
       if (file.size > 50 * 1024 * 1024) throw new Error('文件超过 50 MB，请压缩后重试。');
-      const text = await readVocabularyFile(file, setProgress);
+      const text = await readVocabularyFile(file, setProgress, controller.signal);
       const parsed = parseVocabularyText(text);
       if (parsed.length < 2) throw new Error('没有识别到足够的“英文 + 中文释义”词条。可尝试换一份清晰文件。');
       setEntries(parsed);
@@ -296,9 +302,13 @@ export default function App() {
       setSeed(Date.now());
       requestAnimationFrame(() => document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     } catch (caught) {
-      console.error(caught);
-      setError(caught?.message || '读取失败，请检查文件后重试。');
+      if (caught?.name === 'AbortError') setError('扫描已取消，可以重新选择文件。');
+      else {
+        console.error(caught);
+        setError(caught?.message || '读取失败，请检查文件后重试。');
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
     }
   }, []);
@@ -350,7 +360,13 @@ export default function App() {
           </div>
         </section>
 
-        <UploadPanel onFile={handleFile} busy={busy} progress={progress} error={error} />
+        <UploadPanel
+          onFile={handleFile}
+          onCancel={() => abortRef.current?.abort()}
+          busy={busy}
+          progress={progress}
+          error={error}
+        />
 
         <section id="workspace" className={`workspace ${entries.length ? 'has-data' : ''}`}>
           <div className="workspace-main">
@@ -382,4 +398,3 @@ export default function App() {
     </div>
   );
 }
-
