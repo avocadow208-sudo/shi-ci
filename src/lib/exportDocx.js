@@ -3,6 +3,7 @@ import {
   BorderStyle,
   Document,
   Footer,
+  HeightRule,
   PageBreak,
   PageNumber,
   Packer,
@@ -20,6 +21,9 @@ import { exerciseAnswer, exercisePrompt } from './vocab.js';
 
 const PAGE_WIDTH = 11906;
 const PAGE_HEIGHT = 16838;
+const TABLE_HEIGHT = 14200;
+export const EXPORT_COLUMNS = 5;
+export const TARGET_ROWS_PER_PAGE = 22;
 const COLORS = {
   ink: '243235',
   muted: '667477',
@@ -28,22 +32,21 @@ const COLORS = {
   wash: 'F1F7F5',
 };
 
-export const DENSITY = {
-  comfortable: { label: '舒展', font: 18, spacing: 150, rows: { 1: 48, 2: 42, 3: 36, 4: 28, 5: 22 } },
-  compact: { label: '紧凑', font: 16, spacing: 115, rows: { 1: 60, 2: 52, 3: 44, 4: 34, 5: 27 } },
-  maximum: { label: '极致', font: 14, spacing: 85, rows: { 1: 72, 2: 62, 3: 52, 4: 40, 5: 32 } },
-};
+export function getBalancedPagePlan(itemCount, columns = EXPORT_COLUMNS, targetRows = TARGET_ROWS_PER_PAGE) {
+  if (!itemCount) return [];
+  const totalRows = Math.ceil(itemCount / columns);
+  const pageCount = Math.ceil(totalRows / targetRows);
+  const baseRows = Math.floor(totalRows / pageCount);
+  const pagesWithExtraRow = totalRows % pageCount;
+  let start = 0;
 
-export function normalizeColumnCount(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 3;
-  return Math.min(5, Math.max(1, Math.round(parsed)));
-}
-
-export function getExercisesPerPage(densityKey = 'compact', columnCount = 3) {
-  const density = DENSITY[densityKey] || DENSITY.compact;
-  const columns = normalizeColumnCount(columnCount);
-  return density.rows[columns] * columns;
+  return Array.from({ length: pageCount }, (_, pageIndex) => {
+    const rows = baseRows + (pageIndex < pagesWithExtraRow ? 1 : 0);
+    const count = Math.min(itemCount - start, rows * columns);
+    const page = { start, count, rows };
+    start += count;
+    return page;
+  });
 }
 
 function makeHeader(title, subtitle) {
@@ -63,39 +66,55 @@ function makeHeader(title, subtitle) {
   ];
 }
 
-function makeGrid(items, density, columnCount, answerMode = false, numberOffset = 0) {
+function compactPrompt(item, answerMode) {
+  return (answerMode ? exerciseAnswer(item) : exercisePrompt(item)).replace('　　　　　　', '　　　　');
+}
+
+function promptFontSize(text) {
+  const visualLength = Array.from(text).reduce((total, character) => total + (/[^\x00-\xff]/.test(character) ? 2 : 1), 0);
+  if (visualLength > 52) return 12;
+  if (visualLength > 38) return 14;
+  return 16;
+}
+
+function makeGrid(items, rowCount, answerMode = false, numberOffset = 0) {
   const rows = [];
-  const rowsPerPage = Math.ceil(items.length / columnCount);
-  for (let rowIndex = 0; rowIndex < rowsPerPage; rowIndex += 1) {
+  const rowHeight = Math.min(720, Math.floor(TABLE_HEIGHT / rowCount));
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
     const cells = [];
-    for (let col = 0; col < columnCount; col += 1) {
-      const itemIndex = rowIndex * columnCount + col;
+    for (let col = 0; col < EXPORT_COLUMNS; col += 1) {
+      const itemIndex = rowIndex * EXPORT_COLUMNS + col;
       const item = items[itemIndex];
-      const text = item ? (answerMode ? exerciseAnswer(item) : exercisePrompt(item)) : '';
+      const text = item ? compactPrompt(item, answerMode) : '';
+      const fontSize = promptFontSize(text);
       cells.push(new TableCell({
-        width: { size: 100 / columnCount, type: WidthType.PERCENTAGE },
-        verticalAlign: VerticalAlign.TOP,
+        width: { size: 20, type: WidthType.PERCENTAGE },
+        verticalAlign: VerticalAlign.CENTER,
         margins: { top: 35, bottom: 35, left: 55, right: 55 },
         shading: answerMode && rowIndex % 2 === 0 ? { fill: COLORS.wash, type: ShadingType.CLEAR } : undefined,
         borders: {
           top: { style: BorderStyle.NONE },
           bottom: { style: BorderStyle.SINGLE, color: COLORS.rule, size: 3 },
           left: { style: BorderStyle.NONE },
-          right: col === columnCount - 1
+          right: col === EXPORT_COLUMNS - 1
             ? { style: BorderStyle.NONE }
             : { style: BorderStyle.SINGLE, color: COLORS.rule, size: 3 },
         },
         children: [new Paragraph({
-          spacing: { line: density.spacing, after: 0 },
+          spacing: { line: 115, after: 0 },
           keepLines: true,
           children: item ? [
-            new TextRun({ text: `${numberOffset + itemIndex + 1}. `, bold: true, color: COLORS.accent, size: density.font, font: 'Microsoft YaHei' }),
-            new TextRun({ text, color: COLORS.ink, size: density.font, font: 'Microsoft YaHei' }),
+            new TextRun({ text: `${numberOffset + itemIndex + 1}. `, bold: true, color: COLORS.accent, size: 16, font: 'Microsoft YaHei' }),
+            new TextRun({ text, color: COLORS.ink, size: fontSize, font: 'Microsoft YaHei' }),
           ] : [new TextRun('')],
         })],
       }));
     }
-    rows.push(new TableRow({ cantSplit: true, children: cells }));
+    rows.push(new TableRow({
+      cantSplit: true,
+      height: { value: rowHeight, rule: HeightRule.EXACT },
+      children: cells,
+    }));
   }
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -105,20 +124,17 @@ function makeGrid(items, density, columnCount, answerMode = false, numberOffset 
 }
 
 function makePages(exercises, options, answerMode = false) {
-  const density = DENSITY[options.density] || DENSITY.compact;
-  const columnCount = normalizeColumnCount(options.columnCount);
-  const perPage = getExercisesPerPage(options.density, columnCount);
+  const pagePlan = getBalancedPagePlan(exercises.length);
   const result = [];
-  for (let start = 0; start < exercises.length; start += perPage) {
-    if (start > 0) result.push(new Paragraph({ children: [new PageBreak()] }));
-    const pageItems = exercises.slice(start, start + perPage);
-    const pageNumber = Math.floor(start / perPage) + 1;
+  pagePlan.forEach((page, pageIndex) => {
+    if (pageIndex > 0) result.push(new Paragraph({ children: [new PageBreak()] }));
+    const pageItems = exercises.slice(page.start, page.start + page.count);
     result.push(...makeHeader(
       answerMode ? `${options.title || '英语词汇挖空练习'} · 答案` : options.title,
-      `${answerMode ? '答案页' : '练习页'} ${pageNumber}　·　共 ${exercises.length} 题　·　${columnCount} 列排版`,
+      `${answerMode ? '答案页' : '练习页'} ${pageIndex + 1} / ${pagePlan.length}　·　共 ${exercises.length} 题　·　五列整页排版`,
     ));
-    result.push(makeGrid(pageItems, density, columnCount, answerMode, start));
-  }
+    result.push(makeGrid(pageItems, page.rows, answerMode, page.start));
+  });
   return result;
 }
 
@@ -127,7 +143,6 @@ function safeFilename(value) {
 }
 
 export async function createExercisesDocxBlob(exercises, options) {
-  const columnCount = normalizeColumnCount(options.columnCount);
   const children = makePages(exercises, options, false);
   if (options.includeAnswers && exercises.length) {
     children.push(new Paragraph({ children: [new PageBreak()] }));
@@ -137,7 +152,7 @@ export async function createExercisesDocxBlob(exercises, options) {
   const wordDocument = new Document({
     creator: '拾词 · 英语挖空练习生成器',
     title: options.title,
-    description: `${columnCount} 列 A4 竖版英语词汇挖空练习`,
+    description: '五列 A4 竖版整页英语词汇挖空练习',
     sections: [{
       properties: {
         page: {
