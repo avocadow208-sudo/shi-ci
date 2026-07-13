@@ -210,6 +210,11 @@ main { overflow: hidden; }
 .column-options { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .column-options button { color: #536567; font-size: 10px; font-weight: 700; }
 .column-options button.active { color: var(--teal); }
+.layout-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.layout-summary span { padding: 10px 4px; border: 1px solid #cfe0dc; border-radius: 9px; background: #f0f8f6; text-align: center; }
+.layout-summary strong, .layout-summary small { display: block; }
+.layout-summary strong { color: var(--teal); font-size: 11px; }
+.layout-summary small { margin-top: 2px; color: #7d8d8d; font-size: 7px; }
 .check-row { display: flex; align-items: center; gap: 8px; margin: 20px 0; color: #526365; font-size: 10px; cursor: pointer; }
 .check-row input { position: absolute; opacity: 0; }
 .fake-check { width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid #cbd7d4; border-radius: 5px; background: #fff; color: transparent; }
@@ -231,9 +236,9 @@ main { overflow: hidden; }
 .paper-head strong { max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Noto Sans SC', sans-serif; font-size: clamp(8px, 1.2vw, 14px); }
 .paper-head span { font-size: clamp(4px, .55vw, 7px); color: #738081; }
 .exercise-columns { display: grid; height: calc(100% - 25px); }
-.paper-column { min-width: 0; border-right: 1px solid #e3e7e4; padding: 1.7% 3%; }
+.paper-column { min-width: 0; display: flex; flex-direction: column; border-right: 1px solid #e3e7e4; padding: 1.7% 3%; }
 .paper-column:last-child { border-right: 0; }
-.paper-column p { margin: 0; padding: 5px 0; border-bottom: 1px solid #eef0ee; font-family: 'Noto Sans SC', sans-serif; font-size: clamp(4.6px, .62vw, 7px); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paper-column p { min-height: 0; flex: 1; margin: 0; padding: 5px 0; border-bottom: 1px solid #eef0ee; font-family: 'Noto Sans SC', sans-serif; font-size: clamp(4.6px, .62vw, 7px); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paper-column b { margin-right: 3px; color: var(--teal); }
 .paper-preview[data-columns="1"] .paper-column p { font-size: clamp(7px, .9vw, 10px); }
 .paper-preview[data-columns="2"] .paper-column p { font-size: clamp(6px, .78vw, 9px); }
