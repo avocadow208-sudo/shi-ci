@@ -134,9 +134,15 @@ export function makeExercises(entries, chineseBlankPercent = 50, seed = Date.now
   }
 
   const chineseBlankCount = Math.round(shuffled.length * (chineseBlankPercent / 100));
+  const blankTypes = shuffled.map((_, index) => index < chineseBlankCount ? 'chinese' : 'english');
+  for (let i = blankTypes.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [blankTypes[i], blankTypes[j]] = [blankTypes[j], blankTypes[i]];
+  }
+
   return shuffled.map((entry, index) => ({
     ...entry,
-    blank: index < chineseBlankCount ? 'chinese' : 'english',
+    blank: blankTypes[index],
   }));
 }
 

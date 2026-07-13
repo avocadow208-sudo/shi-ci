@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { readVocabularyFile } from './lib/fileReaders';
-import { DENSITY, exportExercisesDocx } from './lib/exportDocx';
+import { DENSITY, exportExercisesDocx, getExercisesPerPage, normalizeColumnCount } from './lib/exportDocx';
 import { exercisePrompt, makeExercises, parseVocabularyText } from './lib/vocab';
 
 const EXAMPLE_ENTRIES = [
@@ -105,6 +105,7 @@ function UploadPanel({ onFile, onCancel, busy, progress, error }) {
 }
 
 function SettingsPanel({ settings, setSettings, onShuffle, onExport, canExport, exporting }) {
+  const columnCount = normalizeColumnCount(settings.columnCount);
   return (
     <aside className="settings-card">
       <div className="section-kicker"><span>03</span> 排版与导出</div>
@@ -136,7 +137,7 @@ function SettingsPanel({ settings, setSettings, onShuffle, onExport, canExport, 
       <div className="range-labels"><span>只挖英文</span><span>各一半</span><span>只挖中文</span></div>
 
       <div className="setting-heading density-heading">
-        <div><span>页面密度</span><small>A4 横向 · 固定五列</small></div>
+        <div><span>页面密度</span><small>根据列数自动计算每页题量</small></div>
       </div>
       <div className="density-options">
         {Object.entries(DENSITY).map(([key, option]) => (
@@ -146,7 +147,24 @@ function SettingsPanel({ settings, setSettings, onShuffle, onExport, canExport, 
             className={settings.density === key ? 'active' : ''}
             onClick={() => setSettings((value) => ({ ...value, density: key }))}
           >
-            <span>{option.label}</span><small>{option.perPage} 题/页</small>
+            <span>{option.label}</span><small>{getExercisesPerPage(key, columnCount)} 题/页</small>
+          </button>
+        ))}
+      </div>
+
+      <div className="setting-heading density-heading">
+        <div><span>每页列数</span><small>A4 竖版 · 1–5 列可调</small></div>
+        <strong>{columnCount} 列</strong>
+      </div>
+      <div className="column-options" aria-label="每页列数">
+        {[1, 2, 3, 4, 5].map((count) => (
+          <button
+            type="button"
+            key={count}
+            className={columnCount === count ? 'active' : ''}
+            onClick={() => setSettings((value) => ({ ...value, columnCount: count }))}
+          >
+            {count}
           </button>
         ))}
       </div>
@@ -168,7 +186,7 @@ function SettingsPanel({ settings, setSettings, onShuffle, onExport, canExport, 
         {exporting ? <LoaderCircle className="spin" size={19} /> : <Download size={19} />}
         {exporting ? '正在生成 Word…' : '导出可打印 Word'}
       </button>
-      <p className="export-note"><FileText size={14} /> .docx · A4 横向 · 五列 · 可继续编辑</p>
+      <p className="export-note"><FileText size={14} /> .docx · A4 竖版 · {columnCount} 列 · 可继续编辑</p>
     </aside>
   );
 }
@@ -235,23 +253,24 @@ function EntryReview({ entries, setEntries, filename }) {
 }
 
 function PagePreview({ exercises, settings }) {
-  const perPage = DENSITY[settings.density].perPage;
+  const columnCount = normalizeColumnCount(settings.columnCount);
+  const perPage = getExercisesPerPage(settings.density, columnCount);
   const visible = exercises.slice(0, perPage);
-  const columns = Array.from({ length: 5 }, () => []);
-  visible.forEach((item, index) => columns[index % 5].push({ item, number: index + 1 }));
+  const columns = Array.from({ length: columnCount }, () => []);
+  visible.forEach((item, index) => columns[index % columnCount].push({ item, number: index + 1 }));
 
   return (
     <section className="preview-card">
       <div className="preview-toolbar">
         <div><span className="live-dot" />打印预览</div>
-        <span>A4 横向 · 第 1 页 / {Math.max(1, Math.ceil(exercises.length / perPage))}</span>
+        <span>A4 竖版 · {columnCount} 列 · 第 1 页 / {Math.max(1, Math.ceil(exercises.length / perPage))}</span>
       </div>
-      <div className={`paper-preview density-${settings.density}`}>
+      <div className={`paper-preview density-${settings.density}`} data-columns={columnCount}>
         <div className="paper-head">
           <strong>{settings.title || '英语词汇挖空练习'}</strong>
           <span>姓名：____________　日期：____________</span>
         </div>
-        <div className="five-columns">
+        <div className="exercise-columns" style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
           {columns.map((column, index) => (
             <div className="paper-column" key={index}>
               {column.map(({ item, number }) => <p key={item.id}><b>{number}.</b>{exercisePrompt(item)}</p>)}
@@ -277,6 +296,7 @@ export default function App() {
     title: '英语词汇挖空练习',
     chineseBlankPercent: 50,
     density: 'compact',
+    columnCount: 3,
     includeAnswers: true,
   });
 
@@ -341,9 +361,9 @@ export default function App() {
           <div className="hero-copy">
             <span className="eyebrow"><Sparkles size={15} /> 从词表到练习，只需一次上传</span>
             <h1>让每一页词表，<br /><em>变成真正的练习。</em></h1>
-            <p>自动读取 PDF / Word 中英词表，随机挖空中文或英文，并排成五列、可直接打印的 Word 练习纸。</p>
+            <p>自动读取 PDF / Word 中英词表，随机混合挖空中文或英文，并排成竖版、列数可调的 Word 练习纸。</p>
             <div className="hero-stats">
-              <span><strong>5</strong><small>固定列数</small></span>
+              <span><strong>1–5</strong><small>可调列数</small></span>
               <span><strong>A4</strong><small>打印尺寸</small></span>
               <span><strong>100%</strong><small>浏览器本地处理</small></span>
             </div>
@@ -356,7 +376,7 @@ export default function App() {
                 <p key={item.id}><b>{index + 1}.</b>{exercisePrompt(item)}</p>
               ))}
             </div>
-            <div className="sheet-stamp">5-COLUMN<br />PRINT READY</div>
+            <div className="sheet-stamp">PORTRAIT<br />PRINT READY</div>
           </div>
         </section>
 
@@ -393,7 +413,7 @@ export default function App() {
 
       <footer>
         <span>拾词 · 把整理时间留给练习</span>
-        <span>PDF / DOCX → 五列 Word</span>
+        <span>PDF / DOCX → 竖版可调列 Word</span>
       </footer>
     </div>
   );
