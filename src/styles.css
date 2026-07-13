@@ -139,7 +139,10 @@ main { overflow: hidden; }
 .progress-title strong { color: var(--teal); }
 .progress-track { height: 6px; margin: 8px 0 5px; overflow: hidden; border-radius: 99px; background: #c9dfda; }
 .progress-track span { height: 100%; display: block; background: var(--teal); border-radius: inherit; transition: width .2s; }
-.progress-copy p { margin: 0; color: #65797a; font-size: 9px; }
+.progress-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.progress-foot p { margin: 0; color: #65797a; font-size: 9px; }
+.progress-foot button { border: 0; padding: 0; color: #8f4b3c; background: transparent; font-size: 9px; font-weight: 700; cursor: pointer; }
+.progress-foot button:hover { color: #b4361d; text-decoration: underline; }
 .error-banner { display: flex; align-items: center; gap: 8px; padding: 12px 15px; margin-top: 13px; border-radius: 10px; background: #ffebe5; color: #9b3d27; font-size: 12px; }
 
 .workspace {
@@ -269,4 +272,3 @@ footer { max-width: 1210px; margin: 0 auto; padding: 25px 34px 37px; border-top:
   .preview-card { border: 0; box-shadow: none; padding: 0; }
   .paper-preview { box-shadow: none; border: 0; width: 100vw; height: 100vh; }
 }
-
