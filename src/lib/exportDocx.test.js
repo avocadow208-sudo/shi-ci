@@ -10,8 +10,12 @@ describe('portrait Word layout', () => {
   });
 
   it('calculates page capacity from density and column count', () => {
-    expect(getExercisesPerPage('compact', 1)).toBe(30);
-    expect(getExercisesPerPage('compact', 3)).toBe(75);
-    expect(getExercisesPerPage('compact', 5)).toBe(90);
+    expect(getExercisesPerPage('compact', 1)).toBe(60);
+    expect(getExercisesPerPage('compact', 3)).toBe(132);
+    expect(getExercisesPerPage('compact', 5)).toBe(135);
+  });
+
+  it('uses the full portrait page in five-column comfortable mode', () => {
+    expect(getExercisesPerPage('comfortable', 5)).toBe(110);
   });
 });
