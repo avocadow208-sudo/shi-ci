@@ -22,6 +22,7 @@ import { exerciseAnswer, exercisePrompt } from './vocab.js';
 const PAGE_WIDTH = 11906;
 const PAGE_HEIGHT = 16838;
 const TABLE_HEIGHT = 14200;
+export const QUESTION_LINE_SPACING = 150;
 export const EXPORT_COLUMNS = 5;
 export const TARGET_ROWS_PER_PAGE = 22;
 const COLORS = {
@@ -101,7 +102,7 @@ function makeGrid(items, rowCount, answerMode = false, numberOffset = 0) {
             : { style: BorderStyle.SINGLE, color: COLORS.rule, size: 3 },
         },
         children: [new Paragraph({
-          spacing: { line: 115, after: 0 },
+          spacing: { line: QUESTION_LINE_SPACING, after: 0 },
           keepLines: true,
           children: item ? [
             new TextRun({ text: `${numberOffset + itemIndex + 1}. `, bold: true, color: COLORS.accent, size: 16, font: 'Microsoft YaHei' }),
