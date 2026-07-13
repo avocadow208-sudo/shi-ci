@@ -34,8 +34,17 @@ describe('makeExercises', () => {
     expect(exercisePrompt(result[0])).toContain('（');
   });
 
+  it('mixes Chinese and English blanks throughout the exercise', () => {
+    const result = makeExercises(entries, 50, 42);
+    const blankTypes = result.map((item) => item.blank);
+    const transitions = blankTypes.slice(1).filter((type, index) => type !== blankTypes[index]);
+
+    expect(blankTypes.slice(0, 5)).toContain('chinese');
+    expect(blankTypes.slice(0, 5)).toContain('english');
+    expect(transitions.length).toBeGreaterThan(1);
+  });
+
   it('is repeatable for the same seed', () => {
     expect(makeExercises(entries, 50, 7)).toEqual(makeExercises(entries, 50, 7));
   });
 });
-
